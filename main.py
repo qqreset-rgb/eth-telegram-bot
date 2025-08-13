@@ -76,24 +76,22 @@ async def monitor_price(application):
 
 # === Запуск Telegram-бота ===
 async def start_telegram_bot():
-    app_builder = ApplicationBuilder().token(TELEGRAM_TOKEN)
-    application = app_builder.build()
+    application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     # Команди
     pattern = re.compile(r'^!?status$', re.IGNORECASE)
     application.add_handler(CommandHandler("status", send_status))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(pattern), send_status))
 
-    # Моніторинг ціни — окремим таском
+    # Запускаємо моніторинг ціни як фонове завдання
     asyncio.create_task(monitor_price(application))
 
     print("✅ Бот запущено і працює 24/7")
-    # Запускаємо polling і чекаємо закінчення
     await application.run_polling()
 
 # === Головний блок запуску ===
 if __name__ == "__main__":
-    # Flask у фоновому потоці (daemon=True щоб не блокував вихід)
+    # Запускаємо Flask у фоновому потоці (daemon=True, щоб не блокував вихід)
     threading.Thread(target=run_flask, daemon=True).start()
 
     # Запускаємо асинхронний Telegram-бот
