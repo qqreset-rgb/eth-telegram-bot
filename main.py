@@ -1,3 +1,4 @@
+import os
 import asyncio
 import requests
 import threading
@@ -13,8 +14,8 @@ from telegram.ext import (
 )
 
 # === Налаштування ===
-TELEGRAM_TOKEN = '7032915019:AAEZ7AteszlwPdCEsNiMGGN5ndKciMcO9XY'
-CHAT_ID = 444448229
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'тут_твій_токен_на_час_локального_тесту')
+CHAT_ID = int(os.environ.get('CHAT_ID', '444448229'))
 START_PRICE = 4000
 STEP = 20
 
@@ -28,7 +29,8 @@ def home():
     return "✅ Бот працює 24/7"
 
 def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
 
 # === Отримання ціни ETH ===
 def get_eth_price():
@@ -51,7 +53,6 @@ async def monitor_price(application):
             price = get_eth_price()
             print(f"[INFO] Поточна ціна ETH: ${price:.2f}")
 
-            # Якщо ціна піднялася на STEP або більше
             if price >= last_notified_price + STEP:
                 msg = (
                     f"🚀 ETH виріс до ${price:.2f} "
@@ -60,7 +61,6 @@ async def monitor_price(application):
                 await application.bot.send_message(chat_id=CHAT_ID, text=msg)
                 last_notified_price = price
 
-            # Якщо ціна впала на 60 USD або більше
             elif price <= last_notified_price - 60:
                 msg = (
                     f"⚠️ ETH впав до ${price:.2f} "
@@ -78,21 +78,15 @@ async def monitor_price(application):
 async def start_telegram_bot():
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # Команди
     pattern = re.compile(r'^!?status$', re.IGNORECASE)
     application.add_handler(CommandHandler("status", send_status))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(pattern), send_status))
 
-    # Запускаємо моніторинг ціни як фонове завдання
     asyncio.create_task(monitor_price(application))
 
     print("✅ Бот запущено і працює 24/7")
     await application.run_polling()
 
-# === Головний блок запуску ===
 if __name__ == "__main__":
-    # Запускаємо Flask у фоновому потоці (daemon=True, щоб не блокував вихід)
     threading.Thread(target=run_flask, daemon=True).start()
-
-    # Запускаємо асинхронний Telegram-бот
     asyncio.run(start_telegram_bot())
