@@ -1,5 +1,4 @@
 import os
-import asyncio
 import requests
 import threading
 import re
@@ -10,11 +9,11 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     ContextTypes,
-    filters
+    filters,
 )
 
 # === Налаштування ===
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'тут_твій_токен_на_час_локального_тесту')
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', '7032915019:AAEZ7AteszlwPdCEsNiMGGN5ndKciMcO9XY')
 CHAT_ID = int(os.environ.get('CHAT_ID', '444448229'))
 START_PRICE = 4000
 STEP = 20
@@ -45,48 +44,43 @@ async def send_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     price = get_eth_price()
     await update.message.reply_text(f"🔹 Поточна ціна ETH: ${price:.2f}")
 
-# === Монітор ціни ETH ===
-async def monitor_price(application):
+# === Монітор ціни ETH через JobQueue ===
+async def monitor_price_job(context: ContextTypes.DEFAULT_TYPE):
     global last_notified_price
-    while True:
-        try:
-            price = get_eth_price()
-            print(f"[INFO] Поточна ціна ETH: ${price:.2f}")
+    try:
+        price = get_eth_price()
+        print(f"[INFO] Поточна ціна ETH: ${price:.2f}")
 
-            if price >= last_notified_price + STEP:
-                msg = (
-                    f"🚀 ETH виріс до ${price:.2f} "
-                    f"(+${price - last_notified_price:.2f} від останнього сигналу)"
-                )
-                await application.bot.send_message(chat_id=CHAT_ID, text=msg)
-                last_notified_price = price
+        if price >= last_notified_price + STEP:
+            msg = (
+                f"🚀 ETH виріс до ${price:.2f} "
+                f"(+${price - last_notified_price:.2f} від останнього сигналу)"
+            )
+            await context.bot.send_message(chat_id=CHAT_ID, text=msg)
+            last_notified_price = price
 
-            elif price <= last_notified_price - 60:
-                msg = (
-                    f"⚠️ ETH впав до ${price:.2f} "
-                    f"(-${last_notified_price - price:.2f} від останнього сигналу)"
-                )
-                await application.bot.send_message(chat_id=CHAT_ID, text=msg)
-                last_notified_price = price
+        elif price <= last_notified_price - 60:
+            msg = (
+                f"⚠️ ETH впав до ${price:.2f} "
+                f"(-${last_notified_price - price:.2f} від останнього сигналу)"
+            )
+            await context.bot.send_message(chat_id=CHAT_ID, text=msg)
+            last_notified_price = price
 
-        except Exception as e:
-            print(f"[ERROR] {e}")
+    except Exception as e:
+        print(f"[ERROR] {e}")
 
-        await asyncio.sleep(60)
+if __name__ == "__main__":
+    threading.Thread(target=run_flask, daemon=True).start()
 
-# === Запуск Telegram-бота ===
-async def start_telegram_bot():
     application = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     pattern = re.compile(r'^!?status$', re.IGNORECASE)
     application.add_handler(CommandHandler("status", send_status))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(pattern), send_status))
 
-    asyncio.create_task(monitor_price(application))
+    # Запускаємо моніторинг ціни кожні 60 секунд (починаючи через 10 секунд)
+    application.job_queue.run_repeating(monitor_price_job, interval=60, first=10)
 
     print("✅ Бот запущено і працює 24/7")
-    await application.run_polling()
-
-if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
-    asyncio.run(start_telegram_bot())
+    application.run_polling()
